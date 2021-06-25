@@ -22,10 +22,8 @@ import java.lang.reflect.Array;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.text.DecimalFormat;
+import java.time.*;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -381,6 +379,7 @@ public class c{
       return i-s.i;
     }
   }
+
 
   /** {@code Timespan} represents kdb+ timestamp type, which is a point in time represented in nanoseconds since midnight. */
   public static class Timespan implements Comparable<Timespan>{
@@ -818,71 +817,72 @@ public class c{
    * Deserialize date from byte buffer
    * @return Deserialized date
    */
-  Date rd(){
+  LocalDate rd(){
     int dateAsInt=ri();
-    return new Date(dateAsInt==ni?nj:gl(MILLS_BETWEEN_1970_2000+MILLS_IN_DAY*dateAsInt));
+    return  LocalDate.ofInstant(Instant.ofEpochMilli(MILLS_BETWEEN_1970_2000+MILLS_IN_DAY*dateAsInt), ZoneId.of("UTC"));
   }
   /**
    * Write Date to serialization buffer in big endian format
    * @param d Date to serialize
    */
-  void w(Date d){
-    long millsSince1970=d.getTime();
-    w(millsSince1970==nj?ni:(int)(lg(millsSince1970)/MILLS_IN_DAY-10957));
+  void w(LocalDate d){
+    long daySince1970=d.toEpochDay();
+    w((int)(daySince1970-10957));
   }
   /**
    * Deserialize time from byte buffer
    * @return Deserialized time
    */
-  Time rt(){
+  LocalTime rt(){
     int timeAsInt=ri();
-    return new Time(timeAsInt==ni?nj:gl(timeAsInt));
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(timeAsInt), ZoneId.of("UTC")).toLocalTime();
   }
+
   /**
    * Write Time to serialization buffer in big endian format
    * @param t Time to serialize
    */
-  void w(Time t){
-    long millsSince1970=t.getTime();
-    w(millsSince1970==nj?ni:(int)(lg(millsSince1970)%MILLS_IN_DAY));
+  void w(LocalTime t){
+    long millsSince1970=t.toEpochSecond(LocalDate.of(1970, 1, 1), ZoneOffset.UTC) * 1000 + t.getNano()/1000000 ;
+    w(millsSince1970==nj?ni:(int)(millsSince1970%MILLS_IN_DAY));
   }
   /**
    * Deserialize java.util.Date from byte buffer
    * @return Deserialized date
    */
-  java.util.Date rz(){
+  LocalDateTime rz(){
     double f=rf();
-    return new java.util.Date(Double.isNaN(f)?nj:gl(MILLS_BETWEEN_1970_2000+Math.round(8.64e7*f)));
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(Double.isNaN(f)?nj:gl(MILLS_BETWEEN_1970_2000+Math.round(8.64e7*f))), ZoneId.of("UTC"));
   }
   /**
    * Write Date to serialization buffer in big endian format
    * @param z Date to serialize
    */
-  void w(java.util.Date z){
-    long millsSince1970=z.getTime();
+  void w(LocalDateTime z){
+    long millsSince1970=z.toInstant(ZoneOffset.UTC).toEpochMilli();
     w(millsSince1970==nj?nf:(lg(millsSince1970)-MILLS_BETWEEN_1970_2000)/8.64e7);
   }
   /**
    * Deserialize timestamp from byte buffer
    * @return Deserialized timestamp
    */
-  Timestamp rp(){
+  Instant rp(){
     long timeAsLong=rj();
     long d=timeAsLong<0?(timeAsLong+1)/NANOS_IN_SEC-1:timeAsLong/NANOS_IN_SEC;
-    Timestamp p=new Timestamp(timeAsLong==nj?timeAsLong:gl(MILLS_BETWEEN_1970_2000+1000*d));
+    Instant p= Instant.ofEpochMilli(timeAsLong==nj?timeAsLong:gl(MILLS_BETWEEN_1970_2000+1000*d));
     if(timeAsLong!=nj)
-      p.setNanos((int)(timeAsLong-NANOS_IN_SEC*d));
+      p = p.plusNanos((int)(timeAsLong-NANOS_IN_SEC*d));
     return p;
   }
   /**
    * Write Timestamp to serialization buffer in big endian format
    * @param p Timestamp to serialize
    */
-  void w(Timestamp p){
-    long millsSince1970=p.getTime();
+  void w(Instant p){
+    long millsSince1970=p.toEpochMilli();
     if(ipcVersion<1)
       throw new RuntimeException("Timestamp not valid pre kdb+2.6");
-    w(millsSince1970==nj?millsSince1970:1000000*(lg(millsSince1970)-MILLS_BETWEEN_1970_2000)+p.getNanos()%1000000);
+    w(millsSince1970==nj?millsSince1970:1000000*(lg(millsSince1970)-MILLS_BETWEEN_1970_2000)+p.getNano()%1000000);
   }
   /**
    * Deserialize string from byte buffer
@@ -1032,7 +1032,7 @@ public class c{
           stringArr[i]=rs();
         return stringArr;
       case 12:
-        Timestamp[] timestampArr=new Timestamp[n];
+        Instant[] timestampArr=new Instant[n];
         for(;i<n;i++)
           timestampArr[i]=rp();
         return timestampArr;
@@ -1042,12 +1042,12 @@ public class c{
           monthArr[i]=rm();
         return monthArr;
       case 14:
-        Date[] dateArr=new Date[n];
+        LocalDate[] dateArr=new LocalDate[n];
         for(;i<n;i++)
           dateArr[i]=rd();
         return dateArr;
       case 15:
-        java.util.Date[] dateUtilArr=new java.util.Date[n];
+        LocalDateTime[] dateUtilArr=new LocalDateTime[n];
         for(;i<n;i++)
           dateUtilArr[i]=rz();
         return dateUtilArr;
@@ -1067,7 +1067,7 @@ public class c{
           secArr[i]=rv();
         return secArr;
       case 19:
-        Time[] timeArr=new Time[n];
+        LocalTime[] timeArr=new LocalTime[n];
         for(;i<n;i++)
           timeArr[i]=rt();
         return timeArr;
@@ -1106,13 +1106,13 @@ public class c{
       return -10;
     if (x instanceof String)
       return -11;
-    if (x instanceof Date)
+    if (x instanceof LocalDate)
       return -14;
-    if (x instanceof Time)
+    if (x instanceof LocalTime)
       return -19;
-    if (x instanceof Timestamp)
+    if (x instanceof Instant)
       return -12;
-    if (x instanceof java.util.Date)
+    if (x instanceof LocalDateTime)
       return -15;
     if (x instanceof Timespan)
       return -16;
@@ -1142,13 +1142,13 @@ public class c{
       return 10;
     if (x instanceof String[])
       return 11;
-    if (x instanceof Date[])
+    if (x instanceof LocalDate[])
       return 14;
-    if (x instanceof Time[])
+    if (x instanceof LocalTime[])
       return 19;
-    if (x instanceof Timestamp[])
+    if (x instanceof Instant[])
       return 12;
-    if (x instanceof java.util.Date[])
+    if (x instanceof LocalDateTime[])
       return 15;
     if (x instanceof Timespan[])
       return 16;
@@ -1264,16 +1264,16 @@ public class c{
           w((String)x);
           return;
         case -12:
-          w((Timestamp)x);
+          w((Instant)x);
           return;
         case -13:
           w((Month)x);
           return;
         case -14:
-          w((Date)x);
+          w((LocalDate)x);
           return;
         case -15:
-          w((java.util.Date)x);
+          w((LocalDateTime) x);
           return;
         case -16:
           w((Timespan)x);
@@ -1285,7 +1285,7 @@ public class c{
           w((Second)x);
           return;
         case -19:
-          w((Time)x);
+          w((LocalTime) x);
           return;
       }
     if(type==99){
@@ -1331,13 +1331,13 @@ public class c{
         else if(type==11)
           w(((String[])x)[i]);
         else if(type==12)
-          w(((Timestamp[])x)[i]);
+          w(((Instant[])x)[i]);
         else if(type==13)
           w(((Month[])x)[i]);
         else if(type==14)
-          w(((Date[])x)[i]);
+          w(((LocalDate[])x)[i]);
         else if(type==15)
-          w(((java.util.Date[])x)[i]);
+          w(((LocalDateTime[])x)[i]);
         else if(type==16)
           w(((Timespan[])x)[i]);
         else if(type==17)
@@ -1345,7 +1345,7 @@ public class c{
         else if(type==18)
           w(((Second[])x)[i]);
         else
-          w(((Time[])x)[i]);
+          w(((LocalTime[])x)[i]);
   }
 
   /**
@@ -1670,7 +1670,7 @@ public class c{
    * For example {@code "".equals(NULL[11])} 
    */
   public static final Object[] NULL={null,Boolean.valueOf(false),new UUID(0,0),null,Byte.valueOf((byte)0),Short.valueOf(Short.MIN_VALUE),Integer.valueOf(ni),Long.valueOf(nj),Float.valueOf((float)nf),Double.valueOf(nf),Character.valueOf(' '),"",
-    new Timestamp(nj),new Month(ni),new Date(nj),new java.util.Date(nj),new Timespan(nj),new Minute(ni),new Second(ni),new Time(nj)
+     Instant.ofEpochMilli(nj),new Month(ni), LocalDate.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")), LocalDateTime.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")),new Timespan(nj),new Minute(ni),new Second(ni),LocalDateTime.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")).toLocalTime()
   };
   /**
    * Gets a null object for the type indicated by the character.&nbsp;
