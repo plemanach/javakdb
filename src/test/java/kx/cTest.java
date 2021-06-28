@@ -6,8 +6,6 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.Arrays;
-import java.sql.Date;
-import java.sql.Time;
 import org.junit.Test;
 import org.junit.Assert;
 
@@ -31,14 +29,14 @@ public class cTest
         Assert.assertEquals(Double.NaN,c.NULL[9]);
         Assert.assertEquals(' ',c.NULL[10]);
         Assert.assertEquals("",c.NULL[11]);
-        Assert.assertEquals(Instant.ofEpochMilli(Long.MIN_VALUE),c.NULL[12]);
+        Assert.assertEquals(Instant.MIN,c.NULL[12]);
         Assert.assertEquals(new c.Month(Integer.MIN_VALUE),c.NULL[13]);
-        Assert.assertEquals(LocalDate.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")),c.NULL[14]);
-        Assert.assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")),c.NULL[15]);
+        Assert.assertEquals(LocalDate.MIN,c.NULL[14]);
+        Assert.assertEquals(LocalDateTime.MIN,c.NULL[15]);
         Assert.assertEquals(new c.Timespan(Long.MIN_VALUE),c.NULL[16]);
         Assert.assertEquals(new c.Minute(Integer.MIN_VALUE),c.NULL[17]);
         Assert.assertEquals(new c.Second(Integer.MIN_VALUE),c.NULL[18]);
-        Assert.assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")).toLocalTime(),c.NULL[19]);
+        Assert.assertEquals(c.LOCAL_TIME_NULL_VALUE,c.NULL[19]);
     }
 
     @Test
@@ -55,14 +53,14 @@ public class cTest
         Assert.assertEquals(Double.NaN, c.NULL('f'));
         Assert.assertEquals(' ', c.NULL('c'));
         Assert.assertEquals("", c.NULL('s'));
-        Assert.assertEquals(Instant.ofEpochMilli(Long.MIN_VALUE), c.NULL('p'));
+        Assert.assertEquals(Instant.MIN, c.NULL('p'));
         Assert.assertEquals(new c.Month(Integer.MIN_VALUE), c.NULL('m'));
-        Assert.assertEquals(LocalDate.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")), c.NULL('d'));
-        Assert.assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")), c.NULL('z'));
+        Assert.assertEquals(LocalDate.MIN, c.NULL('d'));
+        Assert.assertEquals(LocalDateTime.MIN, c.NULL('z'));
         Assert.assertEquals(new c.Timespan(Long.MIN_VALUE), c.NULL('n'));
         Assert.assertEquals(new c.Minute(Integer.MIN_VALUE), c.NULL('u'));
         Assert.assertEquals(new c.Second(Integer.MIN_VALUE), c.NULL('v'));
-        Assert.assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")).toLocalTime(), c.NULL('t'));
+        Assert.assertEquals(c.LOCAL_TIME_NULL_VALUE, c.NULL('t'));
     }
 
     @Test
@@ -81,14 +79,14 @@ public class cTest
     {
         assertTrue( c.qn("") );
         Assert.assertEquals(false, c.qn(" "));
-        assertTrue( c.qn( Instant.ofEpochMilli(Long.MIN_VALUE)));
+        assertTrue( c.qn( Instant.MIN));
         assertTrue( c.qn(new c.Month(Integer.MIN_VALUE)));
-        assertTrue( c.qn(LocalDate.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC"))));
-        assertTrue( c.qn(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC"))));
+        assertTrue( c.qn(LocalDate.MIN));
+        assertTrue( c.qn(LocalDateTime.MIN));
         assertTrue( c.qn(new c.Timespan(Long.MIN_VALUE)));
         assertTrue( c.qn(new c.Minute(Integer.MIN_VALUE)));
         assertTrue( c.qn(new c.Second(Integer.MIN_VALUE)));
-        assertTrue( c.qn(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")).toLocalTime()));
+        assertTrue( c.qn(c.LOCAL_TIME_NULL_VALUE));
     }
 
     @Test
@@ -111,10 +109,10 @@ public class cTest
         Assert.assertEquals(-9, c.t(Double.valueOf(1.2)));
         Assert.assertEquals(-10, c.t(Character.valueOf(' ')));
         Assert.assertEquals(-11, c.t(""));
-        Assert.assertEquals(-14, c.t(LocalDate.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC"))));
+        Assert.assertEquals(-14, c.t(LocalDate.ofEpochDay(Integer.MIN_VALUE)));
         Assert.assertEquals(-19, c.t(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")).toLocalTime()));
-        Assert.assertEquals(-12, c.t(Instant.ofEpochMilli(Long.MIN_VALUE)));
-        Assert.assertEquals(-15, c.t(LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC"))));
+        Assert.assertEquals(-12, c.t(Instant.MIN));
+        Assert.assertEquals(-15, c.t(LocalDateTime.MIN));
         Assert.assertEquals(-16, c.t(new c.Timespan(Long.MIN_VALUE)));
         Assert.assertEquals(-13, c.t(new c.Month(Integer.MIN_VALUE)));
         Assert.assertEquals(-17, c.t(new c.Minute(Integer.MIN_VALUE)));
@@ -374,7 +372,15 @@ public class cTest
             Assert.fail(e.toString());
         }
 
-        input=LocalDate.ofInstant(Instant.ofEpochMilli(kx.c.MILLS_IN_DAY * (Integer.MIN_VALUE + 10957L)), ZoneId.of("UTC"));
+        input= LocalDate.MIN;
+        try{
+            Assert.assertEquals(input,(LocalDate)c.deserialize(c.serialize(1,input,false)));
+            Assert.assertEquals(input,(LocalDate)c.deserialize(c.serialize(1,input,true)));
+        } catch (Exception e) {
+            Assert.fail(e.toString());
+        }
+
+        input= LocalDate.of(2021, 05, 05);
         try{
             Assert.assertEquals(input,(LocalDate)c.deserialize(c.serialize(1,input,false)));
             Assert.assertEquals(input,(LocalDate)c.deserialize(c.serialize(1,input,true)));
@@ -394,7 +400,16 @@ public class cTest
         } catch (Exception e) {
             Assert.fail(e.toString());
         }
-        input= LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.MIN_VALUE), ZoneId.of("UTC")).toLocalTime();
+
+        input= LocalTime.MIN;
+        try{
+            Assert.assertEquals(input,(LocalTime)c.deserialize(c.serialize(1,input,false)));
+            Assert.assertEquals(input,(LocalTime)c.deserialize(c.serialize(1,input,true)));
+        } catch (Exception e) {
+            Assert.fail(e.toString());
+        }
+
+        input= kx.c.LOCAL_TIME_NULL_VALUE;
         try{
             Assert.assertEquals(input,(LocalTime)c.deserialize(c.serialize(1,input,false)));
             Assert.assertEquals(input,(LocalTime)c.deserialize(c.serialize(1,input,true)));
@@ -414,7 +429,8 @@ public class cTest
         } catch (Exception e) {
             Assert.fail(e.toString());
         }
-        input = Instant.ofEpochMilli(Long.MIN_VALUE);
+
+        input = Instant.MIN;
         try{
             Assert.assertEquals(input,(Instant)c.deserialize(c.serialize(1,input,false)));
             Assert.assertEquals(input,(Instant)c.deserialize(c.serialize(1,input,true)));
@@ -431,8 +447,23 @@ public class cTest
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
             LocalDateTime input = LocalDate.parse("01/01/1990", formatter).atStartOfDay();
+
             Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,false)));
             Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,true)));
+
+            //Null value
+            input= LocalDateTime.MIN;
+
+            Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,false)));
+            Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,true)));
+
+            //ISO_DATE_TIME
+            DateTimeFormatter formatter2 = DateTimeFormatter.ISO_DATE_TIME;
+            input = ZonedDateTime.parse("2014-09-02T08:05:23.653Z", formatter2).toLocalDateTime();
+
+            Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,false)));
+            Assert.assertEquals(input,(LocalDateTime)c.deserialize(c.serialize(1,input,true)));
+
         } catch (Exception e) {
             Assert.fail(e.toString());
         }

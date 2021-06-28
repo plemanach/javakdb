@@ -23,14 +23,19 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.text.DecimalFormat;
-import java.time.*;
+import java.time.LocalTime;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.UUID;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-
+  
 /**
  * Connector class for interfacing with a kdb+ process. This class is essentially a serializer/deserializer of java types
  * to/from the kdb+ ipc wire format, enabling remote method invocation in kdb+ via tcp/ip.
@@ -286,6 +291,8 @@ public class c{
         throw new UnsupportedOperationException("nyi");
       }};
   }
+
+  public static LocalTime LOCAL_TIME_NULL_VALUE = LocalTime.ofNanoOfDay(1);
 
   /** {@code Month} represents kdb+ month type, which is the number of months since Jan 2000. */
   public static class Month implements Comparable<Month>{
@@ -796,38 +803,38 @@ public class c{
   /** {@code Timezone} to use for temporal types serialisation. */
   public TimeZone tz=TimeZone.getDefault();
   static final long MILLS_IN_DAY = 86400000L;
-  static final long MILLS_BETWEEN_1970_2000=MILLS_IN_DAY*10957;
+  static final int DAYS_BETWEEN_1970_2000 = 10957;
+  static final long MILLS_BETWEEN_1970_2000=MILLS_IN_DAY*DAYS_BETWEEN_1970_2000;
   static final long NANOS_IN_SEC=1000000000L;
 
-  /**
-   * Returns the offset of this time zone from UTC at the specified date
-   * @param x the date represented in milliseconds since January 1, 1970 00:00:00 GMT
-   * @return the amount of time in milliseconds to add to UTC to get local time.
-   */
-  long getTzOffset(long x){
-    return tz.getOffset(x);
-  }
-  long lg(long x){
-    return x+getTzOffset(x);
-  }
-  long gl(long x){
-    return x-getTzOffset(x-getTzOffset(x));
-  }
   /**
    * Deserialize date from byte buffer
    * @return Deserialized date
    */
   LocalDate rd(){
     int dateAsInt=ri();
-    return  LocalDate.ofInstant(Instant.ofEpochMilli(MILLS_BETWEEN_1970_2000+MILLS_IN_DAY*dateAsInt), ZoneId.of("UTC"));
+
+    if(dateAsInt == ni)
+      return LocalDate.MIN;
+
+    return LocalDate.ofEpochDay(10957+dateAsInt);
   }
   /**
    * Write Date to serialization buffer in big endian format
    * @param d Date to serialize
    */
   void w(LocalDate d){
-    long daySince1970=d.toEpochDay();
-    w((int)(daySince1970-10957));
+
+    int timeToWrite = ni;
+
+    if(d != LocalDate.MIN) {
+      long daysSince2000 = d.toEpochDay() - DAYS_BETWEEN_1970_2000;
+      timeToWrite = (int)(daysSince2000);
+
+      if (daysSince2000 < Integer.MIN_VALUE || daysSince2000 > Integer.MAX_VALUE)
+        throw new RuntimeException("LocalDate epoch day since 2000 must be between >= Integer.MIN_VALUE and <= Integer.MIN_VALUE");
+    }
+    w(timeToWrite);
   }
   /**
    * Deserialize time from byte buffer
@@ -835,6 +842,10 @@ public class c{
    */
   LocalTime rt(){
     int timeAsInt=ri();
+
+    if(timeAsInt == ni)
+      return LOCAL_TIME_NULL_VALUE;
+
     return LocalDateTime.ofInstant(Instant.ofEpochMilli(timeAsInt), ZoneId.of("UTC")).toLocalTime();
   }
 
@@ -843,8 +854,16 @@ public class c{
    * @param t Time to serialize
    */
   void w(LocalTime t){
-    long millsSince1970=t.toEpochSecond(LocalDate.of(1970, 1, 1), ZoneOffset.UTC) * 1000 + t.getNano()/1000000 ;
-    w(millsSince1970==nj?ni:(int)(millsSince1970%MILLS_IN_DAY));
+
+    int timeToWrite = ni;
+
+    if(t != LOCAL_TIME_NULL_VALUE)
+    {
+      long millsSince1970=t.toEpochSecond(LocalDate.of(1970, 1, 1), ZoneOffset.UTC) * 1000 + t.getNano()/1000000;
+      timeToWrite = (int)(millsSince1970%MILLS_IN_DAY);
+    }
+
+    w(timeToWrite);
   }
   /**
    * Deserialize java.util.Date from byte buffer
@@ -852,15 +871,28 @@ public class c{
    */
   LocalDateTime rz(){
     double f=rf();
-    return LocalDateTime.ofInstant(Instant.ofEpochMilli(Double.isNaN(f)?nj:gl(MILLS_BETWEEN_1970_2000+Math.round(8.64e7*f))), ZoneId.of("UTC"));
+
+    if(Double.isNaN(f))
+    {
+      return LocalDateTime.MIN;
+    }
+    else
+    {
+      return LocalDateTime.ofInstant(Instant.ofEpochMilli(MILLS_BETWEEN_1970_2000+Math.round(8.64e7*f)), ZoneId.of("UTC"));
+    }
   }
   /**
    * Write Date to serialization buffer in big endian format
    * @param z Date to serialize
    */
   void w(LocalDateTime z){
-    long millsSince1970=z.toInstant(ZoneOffset.UTC).toEpochMilli();
-    w(millsSince1970==nj?nf:(lg(millsSince1970)-MILLS_BETWEEN_1970_2000)/8.64e7);
+    double millsSince1970 = nf;
+
+    if(z != LocalDateTime.MIN)
+    {
+      millsSince1970=(z.toInstant(ZoneOffset.UTC).toEpochMilli()-MILLS_BETWEEN_1970_2000)/8.64e7;
+    }
+    w(millsSince1970);
   }
   /**
    * Deserialize timestamp from byte buffer
@@ -868,8 +900,14 @@ public class c{
    */
   Instant rp(){
     long timeAsLong=rj();
+
+    if(timeAsLong == nj)
+    {
+      return Instant.MIN;
+    }
+
     long d=timeAsLong<0?(timeAsLong+1)/NANOS_IN_SEC-1:timeAsLong/NANOS_IN_SEC;
-    Instant p= Instant.ofEpochMilli(timeAsLong==nj?timeAsLong:gl(MILLS_BETWEEN_1970_2000+1000*d));
+    Instant p= Instant.ofEpochMilli(MILLS_BETWEEN_1970_2000+1000*d);
     if(timeAsLong!=nj)
       p = p.plusNanos((int)(timeAsLong-NANOS_IN_SEC*d));
     return p;
@@ -879,10 +917,17 @@ public class c{
    * @param p Timestamp to serialize
    */
   void w(Instant p){
-    long millsSince1970=p.toEpochMilli();
+
+    long timeToWrite = nj;
+    if(p != Instant.MIN)
+    {
+      long millsSince1970=p.toEpochMilli();
+      timeToWrite = 1000000*(millsSince1970-MILLS_BETWEEN_1970_2000)+p.getNano()%1000000;
+    }
+
     if(ipcVersion<1)
       throw new RuntimeException("Timestamp not valid pre kdb+2.6");
-    w(millsSince1970==nj?millsSince1970:1000000*(lg(millsSince1970)-MILLS_BETWEEN_1970_2000)+p.getNano()%1000000);
+    w(timeToWrite);
   }
   /**
    * Deserialize string from byte buffer
@@ -1669,8 +1714,8 @@ public class c{
    * See data type reference <a href="https://code.kx.com/q/basics/datatypes/">https://code.kx.com/q/basics/datatypes/</a> 
    * For example {@code "".equals(NULL[11])} 
    */
-  public static final Object[] NULL={null,Boolean.valueOf(false),new UUID(0,0),null,Byte.valueOf((byte)0),Short.valueOf(Short.MIN_VALUE),Integer.valueOf(ni),Long.valueOf(nj),Float.valueOf((float)nf),Double.valueOf(nf),Character.valueOf(' '),"",
-     Instant.ofEpochMilli(nj),new Month(ni), LocalDate.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")), LocalDateTime.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")),new Timespan(nj),new Minute(ni),new Second(ni),LocalDateTime.ofInstant(Instant.ofEpochMilli(nj),ZoneId.of("UTC")).toLocalTime()
+  public static final Object[]  NULL={null,Boolean.valueOf(false),new UUID(0,0),null,Byte.valueOf((byte)0),Short.valueOf(Short.MIN_VALUE),Integer.valueOf(ni),Long.valueOf(nj),Float.valueOf((float)nf),Double.valueOf(nf),Character.valueOf(' '),"",
+     Instant.MIN,new Month(ni), LocalDate.MIN, LocalDateTime.MIN,new Timespan(nj),new Minute(ni),new Second(ni), LOCAL_TIME_NULL_VALUE
   };
   /**
    * Gets a null object for the type indicated by the character.&nbsp;
